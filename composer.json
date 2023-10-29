@@ -1,0 +1,15 @@
+{
+  "name": "parapente/synacor",
+  "autoload": {
+    "psr-4": {
+      "Parapente\\Synacor\\": "src/"
+    }
+  },
+  "authors": [
+    {
+      "name": "Theofilos Intzoglou",
+      "email": "int.teo@gmail.com"
+    }
+  ],
+  "require": {}
+}
