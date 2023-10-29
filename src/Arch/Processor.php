@@ -520,7 +520,24 @@ class Processor
 		$a = $this->readFrom($address);
 
 		if ($this->inputBuffer->isEmpty()) {
-			$this->addToInputBuffer(readline('>'));
+			$proceed = false;
+			while (!$proceed) {
+				$input = readline('(r for registers, b for bypass) >');
+	
+				if ($input === "r") {
+					for ($i = 0; $i < 8; $i++) {
+						echo "R$i = {$this->register[$i]}\n";
+					}
+				} else if (str_starts_with($input, "r=")) {
+					$value = str_replace("r=", "", $input);
+					$this->register[7] = intval($value);
+				} else if ($input === "b") {
+					// TODO: bypass
+				} else {
+					$proceed = true;
+				}
+			}
+			$this->addToInputBuffer($input);
 		}
 
 		$this->writeTo($a, $this->inputBuffer->pop());
