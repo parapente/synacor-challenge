@@ -2,6 +2,7 @@
 
 namespace Parapente\Synacor\Arch;
 
+use Ds\Queue;
 use Ds\Stack;
 use Exception;
 
@@ -37,6 +38,7 @@ class Processor
 	private array $register;
 	private int $pc;
 	private bool $halted;
+	private Queue $inputBuffer;
 	public bool $debug;
 
 	public function __construct(Memory $memory)
@@ -46,6 +48,7 @@ class Processor
 		$this->mem = $memory;
 		$this->stack = new Stack();
 		$this->register = array_fill(0, 8, 0);
+		$this->inputBuffer = new Queue();
 		$this->debug = false;
 	}
 
@@ -86,6 +89,18 @@ class Processor
 			$this->register[$to - 32768] = $value;
 		} else {
 			throw new \Exception("Invalid writing address ($to)");
+		}
+	}
+
+	public function addToInputBuffer(string $text)
+	{
+		$chars = array_map(
+			fn($item) => ord($item), 
+			str_split("$text\n")
+		);
+
+		foreach ($chars as $char) {
+			$this->inputBuffer->push($char);
 		}
 	}
 
@@ -501,7 +516,16 @@ class Processor
 			echo "PC: $this->pc - in\n";
 		}
 
-		throw new \Exception("in op not implemented!");
+		$address = $this->pc + 1;
+		$a = $this->readFrom($address);
+
+		if ($this->inputBuffer->isEmpty()) {
+			$this->addToInputBuffer(readline('>'));
+		}
+
+		$this->writeTo($a, $this->inputBuffer->pop());
+
+		$this->pc += 2;
 	}
 
 	private function noop(): void
