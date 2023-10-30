@@ -533,11 +533,19 @@ class Processor
 					echo "help           - In game help\n";
 					echo "\nThe following commands are useful for the last\n";
 					echo "part of the game.\n";
+					echo "s              - Print the stack\n";
 					echo "r              - Print the cpu registers\n";
 					echo "r7=<num>       - Set the value of register 7\n";
 					echo "bypass         - Bypass the confirmation mechanism\n";
 					echo "debug          - Show debug status\n\n";
 					echo "debug=<on|off> - Toggle debug info logging\n\n";
+				} else if ($input === "s") {
+					echo "top | ";
+					echo array_reduce(
+						$this->stack->toArray(),
+						fn($carry, $item) => $carry ? "$carry, $item" : "$item"
+					);
+					echo " | bottom\n";
 				} else if ($input === "r") {
 					for ($i = 0; $i < 8; $i++) {
 						echo "R$i = {$this->register[$i]}\n";
