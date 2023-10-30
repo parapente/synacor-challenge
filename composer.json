@@ -11,5 +11,7 @@
       "email": "int.teo@gmail.com"
     }
   ],
-  "require": {}
+  "require": {
+    "bramus/ansi-php": "^3.1"
+  }
 }

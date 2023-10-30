@@ -5,6 +5,7 @@ namespace Parapente\Synacor\Arch;
 use Ds\Queue;
 use Ds\Stack;
 use Exception;
+use Parapente\Synacor\Debug\Logger;
 
 class Processor
 {
@@ -39,7 +40,7 @@ class Processor
 	private int $pc;
 	private bool $halted;
 	private Queue $inputBuffer;
-	public bool $debug;
+	public Logger $logger;
 
 	public function __construct(Memory $memory)
 	{
@@ -49,7 +50,7 @@ class Processor
 		$this->stack = new Stack();
 		$this->register = array_fill(0, 8, 0);
 		$this->inputBuffer = new Queue();
-		$this->debug = false;
+		$this->logger = new Logger(__DIR__ . "/../../debug.log");
 	}
 
 	public function start(): void
@@ -139,83 +140,82 @@ class Processor
 
 	private function halt(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - halt\n";
-		}
-
+		$this->logger->log($this->pc, "halt");
 		$this->halted = true;
 	}
 
 	private function set(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - set\n";
-		}
-
 		$address = $this->pc + 1;
-		$to = $this->mem->getAddr($address);
-		$registerA = $to - 32768;
+		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
+		$registerA = $a - 32768;
 
 		if ($registerA < 0 || $registerA > 7) {
 			throw new \Exception("Invalid value a in set ($registerA)");
 		}
 
-		$value = $this->mem->getAddr($address + 1);
-		$value = $this->checkNumber($value);
-		$this->writeTo($to, $value);
+		$b = $this->readFrom($address + 1);
+		$valueB = $this->checkNumber($b);
+
+		$this->logger->log($this->pc, "set", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+		], ["$valueA", "$valueB"]);
+
+		$this->writeTo($a, $valueB);
 
 		$this->pc += 3;
 	}
 
 	private function push(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - push\n";
-		}
-
 		$address = $this->pc + 1;
-		$value = $this->mem->getAddr($address);
-		$value = $this->checkNumber($value);
-		if ($this->debug) {
-			echo "$value \n";
-		}
-		$this->stack->push($value);
+		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
+
+		$this->logger->log($this->pc, "push", [
+			$this->logger->translate($a),
+		], ["$valueA"]);
+
+		$this->stack->push($valueA);
 
 		$this->pc += 2;
 	}
 
 	private function pop(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - pop\n";
-		}
-
 		$address = $this->pc + 1;
-		$to = $this->mem->getAddr($address);
+		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
+
 		$value = $this->stack->pop();
 
-		$this->writeTo($to, $value);
+		$this->logger->log($this->pc, "pop", [
+			$this->logger->translate($a),
+		], ["$valueA"]);
+
+		$this->writeTo($a, $value);
 		$this->pc += 2;
 	}
 
 	private function eq(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - eq\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		if ($this->debug) {
-			echo "$a,$b,$c\n";
-		}
+		$this->logger->log($this->pc, "eq", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
 
-		if ($b === $c) {
+		if ($valueB === $valueC) {
 			$this->writeTo($a, 1);
 		} else {
 			$this->writeTo($a, 0);
@@ -226,18 +226,21 @@ class Processor
 
 	private function gt(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - gt\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		if ($b > $c) {
+		$this->logger->log($this->pc, "gt", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
+
+		if ($valueB > $valueC) {
 			$this->writeTo($a, 1);
 		} else {
 			$this->writeTo($a, 0);
@@ -248,40 +251,36 @@ class Processor
 
 	private function jmp(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - jmp\n";
-		}
-
 		$address = $this->pc + 1;
-		$newAddress = $this->readFrom($address);
-		$newAddress = $this->checkNumber($newAddress);
+		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 
-		$this->checkAddress($newAddress);
+		$this->logger->log($this->pc, "jmp", [
+			$this->logger->translate($a),
+		], ["$valueA"]);
 
-		$this->pc = $newAddress;
+		$this->checkAddress($valueA);
+
+		$this->pc = $valueA;
 	}
 
 	private function jt(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - jt\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
 		$b = $this->readFrom($address + 1);
 
-		if ($this->debug) {
-			echo "a: $a\n";
-			echo "b: $b\n";
-		}
-
 		$this->checkAddress($b);
-		$a = $this->checkNumber($a);
-		$b = $this->checkNumber($b);
+		$valueA = $this->checkNumber($a);
+		$valueB = $this->checkNumber($b);
 
-		if ($a !== 0) {
-			$this->pc = $b;
+		$this->logger->log($this->pc, "jt", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+		], ["$valueA", "$valueB"]);
+
+		if ($valueA !== 0) {
+			$this->pc = $valueB;
 		} else {
 			$this->pc += 3;
 		}	
@@ -289,24 +288,21 @@ class Processor
 
 	private function jf(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - jf\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
 		$b = $this->readFrom($address + 1);
 
 		$this->checkAddress($b);
-		$a = $this->checkNumber($a);
-		$b = $this->checkNumber($b);
+		$valueA = $this->checkNumber($a);
+		$valueB = $this->checkNumber($b);
 
-		if ($this->debug) {
-			echo "$a,$b\n";
-		}
+		$this->logger->log($this->pc, "jf", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+		], ["$valueA", "$valueB"]);
 
-		if ($a === 0) {
-			$this->pc = $b;
+		if ($valueA === 0) {
+			$this->pc = $valueB;
 		} else {
 			$this->pc += 3;
 		}	
@@ -314,130 +310,140 @@ class Processor
 
 	private function add(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - add\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		if ($this->debug) {
-			echo "$a = $b + $c\n";
-		}
+		$this->logger->log($this->pc, "add", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
 
-		$this->writeTo($a, ($b + $c) % 32768);
+		$this->writeTo($a, ($valueB + $valueC) % 32768);
 
 		$this->pc += 4;		
 	}
 
 	private function mult(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - mult\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		$this->writeTo($a, ($b * $c) % 32768);
+		$this->logger->log($this->pc, "mult", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
+
+		$this->writeTo($a, ($valueB * $valueC) % 32768);
 
 		$this->pc += 4;		
 	}
 
 	private function mod(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - mod\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		$this->writeTo($a, $b % $c);
+		$this->logger->log($this->pc, "mod", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
+
+		$this->writeTo($a, $valueB % $valueC);
 
 		$this->pc += 4;		
 	}
 
 	private function and(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - and\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		$this->writeTo($a, $b & $c);
+		$this->logger->log($this->pc, "and", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
+
+		$this->writeTo($a, $valueB & $valueC);
 
 		$this->pc += 4;		
 	}
 
 	private function or(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - or\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 		$c = $this->readFrom($address + 2);
-		$c = $this->checkNumber($c);
+		$valueC = $this->checkNumber($c);
 
-		$this->writeTo($a, $b | $c);
+		$this->logger->log($this->pc, "or", [
+			$this->logger->translate($a),
+			$this->logger->translate($b),
+			$this->logger->translate($c)
+		], ["$valueA", "$valueB", "$valueC"]);
+
+		$this->writeTo($a, $valueB | $valueC);
 
 		$this->pc += 4;
 	}
 
 	private function not(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - not\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 
-		$this->writeTo($a, 32767 ^ $b);
+		$this->logger->log($this->pc, "not", [
+			$this->logger->translate($a),
+			$this->logger->translate($b)
+		], ["$valueA", "$valueB"]);
+
+		$this->writeTo($a, 32767 ^ $valueB);
 
 		$this->pc += 3;
 	}
 
 	private function rmem(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - rmem\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$b = $this->checkNumber($b);
-		$value = $this->readFrom($b);
-		// $value = $b;
+		$valueB = $this->checkNumber($b);
+		$value = $this->readFrom($valueB);
 
-		if ($this->debug) {
-			echo "$a, $b, $value \n";
-		}
+		$this->logger->log($this->pc, "rmem", [
+			$this->logger->translate($a),
+			$this->logger->translate($b)
+		], ["$valueA", "$valueB -> $value"]);
 
 		$this->writeTo($a, $value);
 
@@ -446,49 +452,48 @@ class Processor
 
 	private function wmem(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - wmem\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
-		$a = $this->checkNumber($a);
+		$valueA = $this->checkNumber($a);
 		$b = $this->readFrom($address + 1);
-		$value = $this->checkNumber($b);
+		$valueB = $this->checkNumber($b);
 
-		$this->writeTo($a, $value);
+		$this->logger->log($this->pc, "wmem", [
+			$this->logger->translate($a),
+			$this->logger->translate($b)
+		], ["$valueA", "$valueB"]);
+
+		$this->writeTo($valueA, $valueB);
 
 		$this->pc += 3;
 	}
 
 	private function call(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - call\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
-		$a = $this->checkNumber($a);
+		$value = $this->checkNumber($a);
 
-		$this->checkAddress($a);
+		$this->checkAddress($value);
+
+		$this->logger->log($this->pc, "call", [
+			$this->logger->translate($a)
+		], ["$value"]);
 
 		$this->stack->push($this->pc + 2);
-		$this->pc = $a;
+		$this->pc = $value;
 	}
 
 	private function ret(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - ret\n";
-		}
-
 		try {
 			$address = $this->stack->pop();
 		} catch (\UnderflowException $e) {
 			$this->halt();
 			return;
 		}
+
+		$this->logger->log($this->pc, "ret");
 
 		$this->checkAddress($address);
 
@@ -497,42 +502,65 @@ class Processor
 
 	private function out(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - out\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
-		$a = $this->checkNumber($a);
+		$value = $this->checkNumber($a);
 
-		echo chr($a);
+		$this->logger->log($this->pc, "out", [
+			$this->logger->translate($a)
+		], ["$value"]);
+
+		echo chr($value);
 
 		$this->pc += 2;
 	}
 
 	private function in(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - in\n";
-		}
-
 		$address = $this->pc + 1;
 		$a = $this->readFrom($address);
+
+		$this->logger->log($this->pc, "in", [
+			$this->logger->translate($a)
+		]);
 
 		if ($this->inputBuffer->isEmpty()) {
 			$proceed = false;
 			while (!$proceed) {
-				$input = readline('(r for registers, b for bypass) >');
+				$input = readline('(? for help) > ');
 	
-				if ($input === "r") {
+				if ($input === "?") {
+					echo "help           - In game help\n";
+					echo "\nThe following commands are useful for the last\n";
+					echo "part of the game.\n";
+					echo "r              - Print the cpu registers\n";
+					echo "r7=<num>       - Set the value of register 7\n";
+					echo "bypass         - Bypass the confirmation mechanism\n";
+					echo "debug          - Show debug status\n\n";
+					echo "debug=<on|off> - Toggle debug info logging\n\n";
+				} else if ($input === "r") {
 					for ($i = 0; $i < 8; $i++) {
 						echo "R$i = {$this->register[$i]}\n";
 					}
-				} else if (str_starts_with($input, "r=")) {
-					$value = str_replace("r=", "", $input);
+				} else if (str_starts_with($input, "r7=")) {
+					$value = str_replace("r7=", "", $input);
 					$this->register[7] = intval($value);
 				} else if ($input === "b") {
 					// TODO: bypass
+				} else if ($input === "debug") {
+					echo "Debug: " . $this->logger->isRunning() ? "on" : "off" . "\n";
+				} else if (str_starts_with($input, "debug=")) {
+					$value = str_replace("debug=", "", $input);
+
+					if ($value === "on") {
+						$this->logger->start();
+						echo "Setting debug to on.\n";
+					}
+
+					if ($value === "off") {
+						$this->logger->stop();
+						echo "Setting debug to off.\n";
+					}
 				} else {
 					$proceed = true;
 				}
@@ -547,9 +575,7 @@ class Processor
 
 	private function noop(): void
 	{
-		if ($this->debug) {
-			echo "PC: $this->pc - noop\n";
-		}
+		$this->logger->log($this->pc, "noop");
 
 		$this->pc++;
 	}

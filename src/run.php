@@ -23,7 +23,7 @@ $contentArray = array_map(fn($item) => ord($item), str_split($contents));
 $mem = new Memory($contentArray);
 $cpu = new Processor($mem);
 
-// $cpu->debug = true;
+// $cpu->logger->start();
 $cpu->start();
 
 
